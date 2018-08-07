@@ -12,8 +12,6 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.content.pm.PackageManager;
-import android.os.Binder;
 import android.os.Handler;
 import android.os.IBinder;
 import android.util.Log;
@@ -28,9 +26,6 @@ public class BleScanService extends Service {
     private static final long SCAN_PERIODIC_RESTART_PERIOD = 29 * 60 * 1000;    // 29 minutes
     protected ArrayList<ScanFilter> scanFilterList = new ArrayList<>();
 
-    // This is the object that receives interactions from clients.  See
-    // RemoteService for a more complete example.
-    private final IBinder mBinder = new LocalBinder();
     private BluetoothLeScanner mBluetoothLeScanner;
     private boolean isScanRequested  = false;
     private Handler mScanPeriodicRestartHandler;
@@ -53,18 +48,12 @@ public class BleScanService extends Service {
     }
 
     @Override
-    public IBinder onBind(Intent intent) {
-        Log.d(TAG, "onBind");
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        Log.d(TAG, "onStartCommand");
 
-        if (mBluetoothAdapter == null) {
-            Log.w(TAG, "Bluetooth is not supported");
-            return null;
-        }
+        scanFilterList = intent.getParcelableArrayListExtra("SCAN_FILTER");
 
-        if (!getPackageManager().hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE)) {
-            Log.w(TAG, "Bluetooth LE is not supported");
-            return null;
-        }
+        isScanRequested = true;
 
         // Register for system Bluetooth events
         IntentFilter filter = new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED);
@@ -77,48 +66,14 @@ public class BleScanService extends Service {
             mBluetoothAdapter.enable();
         }
 
-        return mBinder;
-    }
-
-    @Override
-    public boolean onUnbind(Intent intent) {
-        Log.d(TAG, "onUnbind");
-        unregisterReceiver(mBluetoothReceiver);
-        // TODO: Handle if scan shall keep running in the background with setting
-        stopScan();
-        return super.onUnbind(intent);
+        return START_REDELIVER_INTENT;
     }
 
     @Override
     public void onDestroy() {
         super.onDestroy();
         Log.d(TAG, "onDestroy");
-    }
-
-    /**
-     * Class for clients to access.  Because we know this service always
-     * runs in the same process as its clients, we don't need to deal with
-     * IPC.
-     */
-    public class LocalBinder extends Binder {
-        BleScanService getService() {
-            return BleScanService.this;
-        }
-
-        boolean addScanFilter(ScanFilter scanFilter) {
-            Log.v(TAG, "addScanFilter: " + scanFilter.toString());
-            stopScan();
-            scanFilterList.add(scanFilter);
-            startScan();
-            return true;
-        }
-
-        boolean enableScan() {
-            Log.v(TAG, "enableScan");
-            isScanRequested = true;
-            startScan();
-            return true;
-        }
+        stopScan(); // ToDo: Investigate if this shall be here
     }
 
     private void startScan() {
@@ -216,13 +171,11 @@ public class BleScanService extends Service {
         @Override
         public void onScanResult(int callbackType, ScanResult result) {
             super.onScanResult(callbackType, result);
-            Log.v(TAG, "onScanResult");
             Log.v(TAG, result.toString());
-//            Intent intent = new Intent();
-//            intent.setAction("se.lbhome.thomas.thingshub.ADV_MESSAGE");
-//            intent.putExtra("ADV", result);
-//            LocalBroadcastManager localBroadcastManager = LocalBroadcastManager.getInstance(BleService.this);
-//            localBroadcastManager.sendBroadcast(intent);
+            Intent intent = new Intent();
+            intent.setAction(ThingsHubCommon.ACTION_ADV);
+            intent.putExtra(ThingsHubCommon.EXTRA_SCAN_RESULT, result);
+            sendBroadcast(intent);
         }
 
         @Override
@@ -237,5 +190,11 @@ public class BleScanService extends Service {
             Log.v(TAG, "onScanFailed");
         }
     };
+
+    @Override
+    public IBinder onBind(Intent intent) {
+        // TODO: Return the communication channel to the service.
+        throw new UnsupportedOperationException("Not yet implemented");
+    }
 
 }
